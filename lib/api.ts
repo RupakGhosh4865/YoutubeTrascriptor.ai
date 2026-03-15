@@ -54,3 +54,18 @@ export const getVideoInfo = async (videoId: string) => {
 
   return response.json()
 }
+
+export const summarizeVideo = async (videoId: string) => {
+  const response = await fetch(`${API_BASE_URL}/summarize`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ video_id: videoId }),
+  })
+
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.error || 'Failed to get summary')
+  }
+
+  return response.json()
+}

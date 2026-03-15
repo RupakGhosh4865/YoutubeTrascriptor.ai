@@ -74,6 +74,20 @@ def _build_prompt(context: str, question: str) -> str:
     )
 
 
+def _build_summary_prompt(context: str) -> str:
+    """Build prompt for summarization"""
+    return (
+        "Please provide a concise but comprehensive strategic summary of this YouTube video based on its transcript.\n"
+        "Your summary should include:\n"
+        "1. A high-level overview of the video's purpose.\n"
+        "2. Key insights and main points discussed.\n"
+        "3. A final concluding thought on the overall message.\n\n"
+        "Format the output using markdown with clear headings and bullet points. Keep it professional and high-impact.\n\n"
+        f"Transcript context:\n{context}\n\n"
+        "Strategic Summary:"
+    )
+
+
 def _call_groq(prompt: str, max_retries: int = 3) -> str:
     """
     Call Groq API with retry logic and exponential backoff for rate limits.
@@ -159,11 +173,17 @@ def run_rag_pipeline(video_id: str, question: str) -> str:
     if not transcript:
         return "❌ I couldn't retrieve a transcript for this video. Please ensure the video has captions enabled."
 
-    # Truncate transcript if too long (Gemini has token limits)
-    max_chars = 30000  # ~7500 tokens
+    # Truncate transcript if too long (Groq/Gemini have token limits)
+    # Reducing to 15,000 to avoid 413 Client Error: Payload Too Large
+    max_chars = 15000  # ~4000 tokens
     if len(transcript) > max_chars:
         print(f"⚠️ Transcript too long ({len(transcript)} chars), truncating to {max_chars}")
-        transcript = transcript[:max_chars] + "..."
+        # Try to find the last full sentence/space before truncation
+        last_space = transcript.rfind(' ', 0, max_chars)
+        if last_space != -1:
+            transcript = transcript[:last_space] + "..."
+        else:
+            transcript = transcript[:max_chars] + "..."
 
     prompt = _build_prompt(transcript, question)
 
@@ -189,6 +209,57 @@ def run_rag_pipeline(video_id: str, question: str) -> str:
     _cache[cache_key] = answer
     
     return answer
+
+
+def summarize_video(video_id: str) -> str:
+    """
+    Generate a strategic summary for a video.
+    """
+    if not video_id:
+        raise ValueError("video_id is required")
+
+    # Check cache first (using a specific summary key)
+    cache_key = f"{video_id}:summary"
+    if cache_key in _cache:
+        print("💾 Using cached summary")
+        return _cache[cache_key]
+
+    print(f"\n{'='*60}")
+    print(f"🎬 Summarizing video: {video_id}")
+    print(f"{'='*60}\n")
+
+    transcript = get_youtube_transcript(video_id)
+    
+    if not transcript:
+        return "❌ I couldn't retrieve a transcript for this video. Summarization unavailable."
+
+    # Truncate to avoid payload limits
+    max_chars = 15000
+    if len(transcript) > max_chars:
+        last_space = transcript.rfind(' ', 0, max_chars)
+        transcript = transcript[:last_space] + "..." if last_space != -1 else transcript[:max_chars] + "..."
+
+    prompt = _build_summary_prompt(transcript)
+
+    time.sleep(0.5)
+
+    try:
+        summary = _call_groq(prompt)
+    except Exception as exc:
+        print(f"❌ Groq API error during summary: {exc}")
+        return f"Error while calling Groq: {exc}"
+
+    if not summary:
+        return "I couldn't generate a summary."
+
+    summary = summary.strip()
+    
+    # Cache the summary
+    if len(_cache) > 100:
+        _cache.pop(next(iter(_cache)))
+    _cache[cache_key] = summary
+    
+    return summary
 
 
 # For direct testing

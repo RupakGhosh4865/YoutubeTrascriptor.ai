@@ -100,6 +100,34 @@ def ask_question():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/summarize', methods=['POST', 'OPTIONS'])
+def summarize():
+    if request.method == 'OPTIONS':
+        return '', 200
+    
+    try:
+        from main import summarize_video
+        data = request.json
+        video_id = extract_video_id(data.get('video_id', ''))
+        
+        if not video_id:
+            return jsonify({'error': 'video_id is required'}), 400
+        
+        print(f"\n📝 Summarizing video ID: {video_id}")
+        
+        # Generate summary
+        summary = summarize_video(video_id)
+        
+        return jsonify({
+            'success': True,
+            'summary': summary
+        })
+    
+    except Exception as e:
+        print(f"❌ Error in summarize: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({'status': 'healthy', 'message': 'YouTube Q&A API is running'})

@@ -1,18 +1,12 @@
 import type { Metadata } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
-
 import './globals.css'
-
-const _geist = Geist({ subsets: ['latin'] })
-const _geistMono = Geist_Mono({ subsets: ['latin'] })
-
 export const metadata: Metadata = {
-  title: 'YouTube Transcript Q&A | AI-Powered Video Insights',
-  description: 'Ask questions about any YouTube video and get instant AI-powered answers from transcripts using Gemini LLM and RAG',
+  title: 'YTIntelligence | Next-Gen Video Intelligence',
+  description: 'Turn any YouTube video into an interactive brain. Extract insights, summarize content, and chat with videos in real-time powered by Groq Llama 3.',
   generator: 'v0.app',
   openGraph: {
-    title: 'YouTube Transcript Q&A',
-    description: 'Turn YouTube videos into interactive knowledge',
+    title: 'YTIntelligence',
+    description: 'Transform YouTube videos into interactive knowledge',
     type: 'website',
   },
 }
@@ -24,7 +18,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="font-sans antialiased">{children}</body>
+       <body className="font-sans antialiased bg-background text-foreground">
+        {children}
+      </body>
     </html>
   )
 }
+

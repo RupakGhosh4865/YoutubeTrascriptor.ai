@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { motion } from 'framer-motion'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Play, AlertCircle } from 'lucide-react'
@@ -13,11 +14,6 @@ interface VideoInputProps {
   error?: string
 }
 
-const SAMPLE_VIDEOS = [
-  { id: 'Gfr50f6ZBvo', label: 'Deep Learning Basics' },
-  { id: 'dQw4w9WgXcQ', label: 'Popular Video' },
-]
-
 export function VideoInput({ onSubmit, isLoading, error }: VideoInputProps) {
   const [input, setInput] = useState('')
   const [validationError, setValidationError] = useState('')
@@ -26,97 +22,98 @@ export function VideoInput({ onSubmit, isLoading, error }: VideoInputProps) {
     e.preventDefault()
     setValidationError('')
 
-    try {
-      const videoId = extractVideoId(input)
-      onSubmit(videoId)
-    } catch (err) {
-      setValidationError(
-        err instanceof Error ? err.message : 'Invalid YouTube URL'
-      )
+    const videoId = extractVideoId(input)
+    if (!videoId) {
+      setValidationError('Invalid YouTube URL. Please check the link.')
+      return
     }
-  }
 
-  const handleSampleClick = (videoId: string) => {
-    setValidationError('')
-    setInput(videoId)
     onSubmit(videoId)
   }
 
   return (
-    <div className="glass-effect rounded-[2rem] p-8 sm:p-12 max-w-3xl mx-auto border-white/50 shadow-2xl relative overflow-hidden">
-      <div className="absolute top-0 right-0 w-32 h-32 premium-gradient opacity-10 blur-3xl -mr-16 -mt-16"></div>
-      
-      <div className="mb-10 text-center sm:text-left relative z-10">
-        <h2 className="text-3xl sm:text-4xl font-black text-foreground mb-4 tracking-tight">
-          Analyze Video <span className="gradient-text">Instantly</span>
-        </h2>
-        <p className="text-muted-foreground text-lg sm:text-xl font-medium">
-          Paste a YouTube link below to start extraction.
-        </p>
-      </div>
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="max-w-3xl mx-auto w-full"
+    >
+      <div className="glass-card scan-line glow-border rounded-[2.5rem] p-10 sm:p-14 border-white/40 shadow-2xl relative overflow-hidden group">
+        <div className="absolute top-0 left-0 w-full h-1 premium-gradient opacity-50"></div>
+        
+        <div className="relative z-10 text-center space-y-10">
+          <div className="inline-flex items-center justify-center p-6 rounded-[2rem] bg-indigo-50/50 text-indigo-600 mb-2 group-hover:scale-110 group-hover:rotate-6 transition-all duration-700 shadow-inner">
+            <Play className="w-10 h-10 fill-current" />
+          </div>
+          
+          <div className="space-y-4">
+            <h2 className="text-4xl font-black text-foreground tracking-tighter leading-tight">
+              Ingest <span className="gradient-text animate-gradient">Stream Metadata</span>
+            </h2>
+            <p className="text-muted-foreground font-bold tracking-tight text-lg">
+              Input the transmission link to begin neural decomposition.
+            </p>
+          </div>
 
-      <form onSubmit={handleSubmit} className="space-y-8 relative z-10">
-        <div className="relative group">
-          <Input
-            type="text"
-            placeholder="Paste YouTube URL or Video ID..."
-            value={input}
-            onChange={(e) => {
-              setInput(e.target.value)
-              setValidationError('')
-            }}
-            disabled={isLoading}
-            className="h-16 px-6 text-lg rounded-2xl bg-white/50 border-white/40 focus:bg-white focus:ring-4 focus:ring-primary/20 transition-all duration-300 shadow-sm"
-          />
-        </div>
-
-        {(validationError || error) && (
-          <Alert variant="destructive" className="rounded-2xl border-destructive/20 bg-destructive/5">
-            <AlertCircle className="h-5 w-5" />
-            <AlertDescription className="font-medium">
-              {validationError || error}
-            </AlertDescription>
-          </Alert>
-        )}
-
-        <Button
-          type="submit"
-          disabled={!input.trim() || isLoading}
-          size="lg"
-          className="w-full premium-gradient hover:opacity-90 text-white border-0 h-16 text-lg font-bold rounded-2xl transition-all duration-500 shadow-lg hover:shadow-indigo-500/25 active:scale-95 group overflow-hidden relative"
-        >
-          {isLoading ? (
-            <div className="flex items-center gap-3">
-              <div className="w-5 h-5 border-3 border-white/30 border-t-white rounded-full animate-spin"></div>
-              <span className="tracking-wide">Analyzing Content...</span>
+          <form onSubmit={handleSubmit} className="space-y-8">
+            <div className="relative group/input">
+              <div className="absolute inset-y-0 left-6 flex items-center pointer-events-none text-muted-foreground group-focus-within/input:text-primary transition-colors">
+                <span className="text-xs font-black tracking-widest uppercase opacity-40 mr-3">ID:</span>
+              </div>
+              <Input
+                type="text"
+                placeholder="https://youtube.com/watch?v=..."
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                className="pl-14 h-20 rounded-3xl bg-white/60 border-2 border-indigo-50 focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all text-lg font-bold tracking-tight placeholder:text-slate-300 placeholder:font-medium shadow-inner"
+              />
+              <div className="absolute inset-y-0 right-4 flex items-center">
+                 <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
+              </div>
             </div>
-          ) : (
-            <div className="flex items-center gap-2 group-hover:scale-110 transition-transform">
-              <Play className="w-6 h-6 fill-current" />
-              <span className="tracking-wide">Process Now</span>
-            </div>
-          )}
-        </Button>
-      </form>
 
-      {/* Sample Videos */}
-      <div className="mt-12 pt-10 border-t border-indigo-100/50 relative z-10">
-        <p className="text-sm font-bold text-muted-foreground uppercase tracking-widest mb-6">
-          Need a quick test?
-        </p>
-        <div className="flex flex-wrap gap-4">
-          {SAMPLE_VIDEOS.map((video) => (
-            <button
-              key={video.id}
-              onClick={() => handleSampleClick(video.id)}
-              disabled={isLoading}
-              className="px-6 py-3 rounded-xl border border-indigo-200 text-indigo-700 bg-indigo-50/50 hover:bg-white hover:border-indigo-400 hover:shadow-md transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-bold"
+            {(validationError || error) && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+              >
+                <Alert variant="destructive" className="rounded-2xl border-2 border-red-100 bg-red-50/50 backdrop-blur-md">
+                  <AlertCircle className="h-5 w-5" />
+                  <AlertDescription className="font-bold tracking-tight text-slate-800">
+                    {validationError || error}
+                  </AlertDescription>
+                </Alert>
+              </motion.div>
+            )}
+
+            <Button
+              type="submit"
+              disabled={isLoading || !input}
+              className="w-full h-20 rounded-3xl premium-gradient text-white text-xl font-black uppercase tracking-[0.2em] shadow-2xl shadow-indigo-500/30 hover:shadow-indigo-500/50 hover:scale-[1.02] active:scale-95 transition-all group"
             >
-              {video.label}
-            </button>
-          ))}
+              {isLoading ? (
+                <span className="flex items-center gap-3">
+                  <span className="w-6 h-6 border-4 border-white/30 border-t-white rounded-full animate-spin"></span>
+                  Synthesizing...
+                </span>
+              ) : (
+                <span className="flex items-center gap-3">
+                  Initialize Analysis
+                  <motion.span
+                    animate={{ x: [0, 5, 0] }}
+                    transition={{ repeat: Infinity, duration: 1.5 }}
+                  >
+                    →
+                  </motion.span>
+                </span>
+              )}
+            </Button>
+          </form>
+
+          <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.4em] pt-4">
+             Transmission encrypted via TLS 1.3
+          </p>
         </div>
       </div>
-    </div>
+    </motion.div>
   )
 }

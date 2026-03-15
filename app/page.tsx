@@ -9,7 +9,7 @@ import { Features } from '@/components/Features'
 import { VideoInput } from '@/components/VideoInput'
 import { ProcessingState } from '@/components/ProcessingState'
 import { QuestionInterface } from '@/components/QuestionInterface'
-import { processVideo, askQuestion, getVideoInfo } from '@/lib/api'
+import { processVideo, askQuestion, getVideoInfo, summarizeVideo } from '@/lib/api'
 import { ChatMessage, VideoInfo } from '@/lib/types'
 
 type AppState = 'hero' | 'input' | 'processing' | 'qa'
@@ -136,6 +136,34 @@ export default function Home() {
     toast.success('Chat cleared')
   }
 
+  const handleSummarize = async () => {
+    if (!currentVideoId) return
+
+    try {
+      setError(undefined)
+      setIsLoading(true)
+
+      const response = await summarizeVideo(currentVideoId)
+
+      const summaryMessage: ChatMessage = {
+        id: Date.now().toString(),
+        type: 'answer',
+        content: `### Strategic Summary\n\n${response.summary}`,
+        timestamp: new Date(),
+      }
+      setChatHistory((prev) => [...prev, summaryMessage])
+
+      toast.success('Summary generated! 📄')
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error ? err.message : 'Failed to get summary'
+      setError(errorMessage)
+      toast.error(errorMessage)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   const handleNewVideo = () => {
     setCurrentVideoId('')
     setVideoInfo(undefined)
@@ -147,7 +175,7 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-background selection:bg-primary/20">
+    <main className="min-h-screen bg-background selection:bg-primary/20 overflow-x-hidden">
       <Toaster position="top-right" />
 
       <AnimatePresence mode="wait">
@@ -166,15 +194,15 @@ export default function Home() {
         {(state === 'input' || state === 'processing' || state === 'qa') && (
           <motion.div
             key="app"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5 }}
+            initial={{ opacity: 0, y: 100 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
             ref={appRef}
-            className="py-12 sm:py-24 px-4 sm:px-6 lg:px-8 relative"
+            className="py-24 sm:py-32 px-4 sm:px-6 lg:px-8 relative min-h-screen flex flex-col items-center justify-center"
           >
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-[500px] premium-gradient opacity-5 blur-[120px] pointer-events-none"></div>
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-[800px] premium-gradient opacity-[0.03] blur-[160px] pointer-events-none"></div>
             
-            <div className="max-w-5xl mx-auto space-y-12 relative z-10">
+            <div className="max-w-6xl w-full mx-auto space-y-20 relative z-10">
               {state === 'input' && (
                 <VideoInput
                   onSubmit={handleVideoSubmit}
@@ -186,7 +214,7 @@ export default function Home() {
               {state === 'processing' && (
                 <ProcessingState
                   progress={processingProgress}
-                  stage="Analyzing Video"
+                  stage="Neural Extraction"
                 />
               )}
 
@@ -194,20 +222,24 @@ export default function Home() {
                 <motion.div
                   initial={{ opacity: 0, scale: 0.98 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  className="space-y-10"
+                  transition={{ duration: 0.8 }}
+                  className="space-y-16"
                 >
-                  <button
-                    onClick={handleNewVideo}
-                    className="group flex items-center gap-2 px-6 py-3 rounded-2xl glass-effect border-indigo-100 text-indigo-700 hover:bg-white hover:border-indigo-400 transition-all font-bold text-sm shadow-sm"
-                  >
-                    <span className="group-hover:-translate-x-1 transition-transform">←</span>
-                    Try Another Video
-                  </button>
+                  <div className="flex justify-center md:justify-start">
+                    <button
+                      onClick={handleNewVideo}
+                      className="group flex items-center gap-3 px-8 py-4 rounded-2xl glass-card border-indigo-100/50 text-indigo-700 hover:bg-white hover:border-indigo-400 hover:shadow-2xl transition-all font-black text-xs uppercase tracking-widest"
+                    >
+                      <span className="group-hover:-translate-x-2 transition-transform">←</span>
+                      New Investigation
+                    </button>
+                  </div>
 
                   <QuestionInterface
                     videoInfo={videoInfo}
                     onAsk={handleAskQuestion}
                     onClear={handleClearChat}
+                    onSummarize={handleSummarize}
                     chatHistory={chatHistory}
                     isLoading={isLoading}
                     error={error}
@@ -219,22 +251,46 @@ export default function Home() {
         )}
       </AnimatePresence>
 
-      {/* Footer */}
-      <footer className="border-t border-indigo-50 bg-white py-12 relative z-10">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 text-center sm:text-left flex flex-col sm:flex-row justify-between items-center gap-6">
-          <div className="flex items-center gap-3">
-             <div className="premium-gradient p-2 rounded-xl text-white">
-               <Zap className="w-5 h-5" />
-             </div>
-             <span className="text-xl font-black tracking-tight text-foreground">
-               YT<span className="gradient-text">Intelligence</span>
+      {/* Premium Footer */}
+      <footer className="border-t border-indigo-50/50 bg-white/50 backdrop-blur-xl py-20 relative z-10">
+        <div className="max-w-7xl mx-auto px-6 lg:px-8">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-12">
+            <div className="flex flex-col items-center md:items-start gap-6">
+              <div className="flex items-center gap-4">
+                 <div className="premium-gradient p-3 rounded-2xl text-white shadow-xl">
+                   <Zap className="w-6 h-6" />
+                 </div>
+                 <span className="text-3xl font-black tracking-tighter text-foreground">
+                   YT<span className="gradient-text animate-gradient">Intelligence</span>
+                 </span>
+              </div>
+              <p className="text-muted-foreground font-bold text-sm max-w-sm text-center md:text-left leading-relaxed">
+                The world's most advanced YouTube analysis engine. Turn hours of video into seconds of insight.
+              </p>
+            </div>
+            
+            <div className="flex flex-col items-center md:items-end gap-6 text-center md:text-right">
+              <div className="flex gap-8">
+                {['Twitter', 'GitHub', 'Discord'].map((platform) => (
+                  <span key={platform} className="text-xs font-black uppercase tracking-widest text-slate-400 hover:text-primary cursor-pointer transition-colors">
+                    {platform}
+                  </span>
+                ))}
+              </div>
+              <p className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.4em]">
+                Engineered for Excellence • © 2026
+              </p>
+            </div>
+          </div>
+          
+          <div className="mt-16 pt-8 border-t border-indigo-50/30 text-center">
+             <span className="text-[10px] font-black text-slate-300 uppercase tracking-[1em] ml-[1em]">
+                Hyper-Speed Infrastructure
              </span>
           </div>
-          <p className="text-sm font-bold text-muted-foreground uppercase tracking-widest">
-            Powered by Groq Llama 3 • <span className="text-primary">Built with Precision</span>
-          </p>
         </div>
       </footer>
     </main>
   )
 }
+
