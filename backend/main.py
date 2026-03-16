@@ -262,6 +262,26 @@ def summarize_video(video_id: str) -> str:
     return summary
 
 
+def get_video_info(video_id: str) -> dict:
+    """
+    Fetch basic video info using oEmbed API.
+    This is generally more resilient to cloud IP blocking than the transcript API.
+    """
+    url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json"
+    try:
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        return {
+            "title": data.get("title", "YouTube Video"),
+            "thumbnail": data.get("thumbnail_url", ""),
+            "duration": "N/A" # oEmbed doesn't provide duration
+        }
+    except Exception as e:
+        print(f"Error fetching video info: {e}")
+        return {"title": "YouTube Video", "thumbnail": "", "duration": "N/A"}
+
+
 # For direct testing
 if __name__ == "__main__":
     test_video_id = "O1z_-O6IXIc"

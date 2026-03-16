@@ -55,7 +55,7 @@ def process_video():
         if not transcript:
             return jsonify({
                 'success': False,
-                'error': 'No transcript available. Please ensure the video has captions enabled or provide one manually.'
+                'error': 'YouTube blocked the automated fetch (common on cloud hosting like Render). Please use the "Provide transcript manually" option below to paste or upload the transcript text.'
             }), 404
 
         # Keep response size reasonable but still useful for the UI.
@@ -131,6 +131,23 @@ def summarize():
     except Exception as e:
         print(f"❌ Error in summarize: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/video-info', methods=['GET'])
+def video_info():
+    try:
+        from main import get_video_info
+        video_id = extract_video_id(request.args.get('video_id', ''))
+        
+        if not video_id:
+            return jsonify({'error': 'video_id is required'}), 400
+        
+        info = get_video_info(video_id)
+        return jsonify(info)
+    
+    except Exception as e:
+        print(f"❌ Error in video_info: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/health', methods=['GET'])
