@@ -15,11 +15,14 @@ export const extractVideoId = (input: string): string => {
   throw new Error('Invalid YouTube URL or video ID')
 }
 
-export const processVideo = async (videoId: string) => {
+export const processVideo = async (videoId: string, manualTranscript?: string) => {
   const response = await fetch(`${API_BASE_URL}/process-video`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ video_id: videoId }),
+    body: JSON.stringify({ 
+      video_id: videoId,
+      manual_transcript: manualTranscript 
+    }),
   })
 
   if (!response.ok) {

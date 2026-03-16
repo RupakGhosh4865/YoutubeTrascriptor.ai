@@ -36,21 +36,26 @@ def process_video():
     try:
         data = request.json
         url_or_id = data.get('video_id', '')
+        manual_transcript = data.get('manual_transcript', '')
         
         if not url_or_id:
             return jsonify({'error': 'video_id is required'}), 400
         
         # Extract video ID
         video_id = extract_video_id(url_or_id)
-        print(f"\n🎬 Processing video ID: {video_id}")
         
-        # Fetch transcript
-        transcript = get_youtube_transcript(video_id)
+        if manual_transcript:
+            print(f"\n📝 Using manual transcript for video ID: {video_id}")
+            transcript = manual_transcript
+        else:
+            print(f"\n🎬 Processing video ID: {video_id}")
+            # Fetch transcript
+            transcript = get_youtube_transcript(video_id)
 
         if not transcript:
             return jsonify({
                 'success': False,
-                'error': 'No transcript available. Please ensure the video has captions enabled.'
+                'error': 'No transcript available. Please ensure the video has captions enabled or provide one manually.'
             }), 404
 
         # Keep response size reasonable but still useful for the UI.

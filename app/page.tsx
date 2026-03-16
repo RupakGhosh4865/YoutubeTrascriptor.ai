@@ -35,7 +35,7 @@ export default function Home() {
     scrollToApp()
   }
 
-  const handleVideoSubmit = async (videoId: string) => {
+  const handleVideoSubmit = async (videoId: string, manualTranscript?: string) => {
     try {
       setError(undefined)
       setCurrentVideoId(videoId)
@@ -50,7 +50,7 @@ export default function Home() {
         })
       }, 300)
 
-      const response = await processVideo(videoId)
+      const response = await processVideo(videoId, manualTranscript)
       clearInterval(progressInterval)
       setProcessingProgress(75)
 
@@ -208,6 +208,7 @@ export default function Home() {
                   onSubmit={handleVideoSubmit}
                   isLoading={isLoading}
                   error={error}
+                  onToast={(msg, type) => type === 'success' ? toast.success(msg) : toast.error(msg)}
                 />
               )}
 

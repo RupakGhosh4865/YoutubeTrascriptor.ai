@@ -1,22 +1,25 @@
-'use client'
-
-import { useState } from 'react'
-import { motion } from 'framer-motion'
+import { useState, useRef } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Play, AlertCircle } from 'lucide-react'
+import { Play, AlertCircle, FileText, Upload, X } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Textarea } from '@/components/ui/textarea'
 import { extractVideoId } from '@/lib/api'
 
 interface VideoInputProps {
-  onSubmit: (videoId: string) => void
+  onSubmit: (videoId: string, manualTranscript?: string) => void
   isLoading: boolean
   error?: string
+  onToast?: (message: string, type: 'success' | 'error') => void
 }
 
-export function VideoInput({ onSubmit, isLoading, error }: VideoInputProps) {
+export function VideoInput({ onSubmit, isLoading, error, onToast }: VideoInputProps) {
   const [input, setInput] = useState('')
   const [validationError, setValidationError] = useState('')
+  const [showFallback, setShowFallback] = useState(false)
+  const [manualTranscript, setManualTranscript] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -28,8 +31,24 @@ export function VideoInput({ onSubmit, isLoading, error }: VideoInputProps) {
       return
     }
 
-    onSubmit(videoId)
+    onSubmit(videoId, manualTranscript)
   }
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    if (reader.result) {
+      const content = reader.result as string
+      setManualTranscript(content)
+      onToast?.('Transcript file loaded! 📄', 'success')
+    }
+    reader.readAsText(file)
+  }
+
+  // Note: toast is imported from sonner in page.tsx, assuming it's available or we can use a simpler notification
+  // For simplicity here, I'll just set the state.
 
   return (
     <motion.div
@@ -71,7 +90,85 @@ export function VideoInput({ onSubmit, isLoading, error }: VideoInputProps) {
               </div>
             </div>
 
-            {(validationError || error) && (
+            <AnimatePresence>
+              {(error || showFallback) && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="space-y-4"
+                >
+                  <Alert variant="destructive" className="rounded-2xl border-2 border-red-100 bg-red-50/50 backdrop-blur-md">
+                    <AlertCircle className="h-5 w-5" />
+                    <AlertDescription className="font-bold tracking-tight text-slate-800 text-left">
+                      {error || "We couldn't find a transcript. You can provide one manually below."}
+                      {!showFallback && (
+                        <button 
+                          type="button" 
+                          onClick={() => setShowFallback(true)}
+                          className="block mt-2 underline text-indigo-600 hover:text-indigo-800"
+                        >
+                          Provide transcript manually?
+                        </button>
+                      )}
+                    </AlertDescription>
+                  </Alert>
+
+                  {showFallback && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="space-y-4 p-6 rounded-3xl bg-indigo-50/30 border-2 border-indigo-100/50 text-left"
+                    >
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-black uppercase tracking-widest text-indigo-600 flex items-center gap-2">
+                          <FileText className="w-4 h-4" />
+                          Manual Content Analysis
+                        </label>
+                        <button 
+                          type="button" 
+                          onClick={() => {
+                            setShowFallback(false)
+                            setManualTranscript('')
+                          }}
+                          className="text-slate-400 hover:text-slate-600"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <Textarea 
+                        placeholder="Paste the transcript text here..."
+                        value={manualTranscript}
+                        onChange={(e) => setManualTranscript(e.target.value)}
+                        className="min-h-[150px] rounded-2xl bg-white/80 border-indigo-50 focus:border-indigo-200 transition-all font-medium text-sm leading-relaxed"
+                      />
+
+                      <div className="flex gap-4">
+                        <input 
+                          type="file" 
+                          ref={fileInputRef} 
+                          onChange={handleFileUpload} 
+                          accept=".txt,.json" 
+                          className="hidden" 
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="flex-1 h-12 rounded-xl border-indigo-200 text-indigo-600 hover:bg-indigo-50 font-bold text-xs uppercase tracking-widest"
+                        >
+                          <Upload className="w-4 h-4 mr-2" />
+                          Upload File
+                        </Button>
+                      </div>
+                    </motion.div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {validationError && (
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -79,7 +176,7 @@ export function VideoInput({ onSubmit, isLoading, error }: VideoInputProps) {
                 <Alert variant="destructive" className="rounded-2xl border-2 border-red-100 bg-red-50/50 backdrop-blur-md">
                   <AlertCircle className="h-5 w-5" />
                   <AlertDescription className="font-bold tracking-tight text-slate-800">
-                    {validationError || error}
+                    {validationError}
                   </AlertDescription>
                 </Alert>
               </motion.div>
