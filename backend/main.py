@@ -3,33 +3,39 @@ import time
 from typing import List
 import requests
 from dotenv import load_dotenv
-from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain_core.documents import Document
 
 load_dotenv()
 
-# Simple in-memory cache to avoid re-processing same video+question
-_cache: dict[str, str] = {}
+# Simple in-memory cache to avoid re-indexing same video
+_vector_store_cache: dict[str, FAISS] = {}
 
 
 def get_youtube_transcript(video_id: str, preferred_languages: List[str] | None = None) -> str:
     """
-    Fetch transcript for a YouTube video with robust fallback mechanisms.
-    Tries multiple languages and falls back to any available transcript.
+    Fetch transcript for a YouTube video. 
+    Uses a robust method with fallbacks.
     """
     preferred_languages = preferred_languages or ["en", "hi", "hi-IN"]
-
-    # The version you have (1.2.4) uses an *instance* API:
-    #   api = YouTubeTranscriptApi()
-    #   transcript_list = api.list(video_id)
-    api = YouTubeTranscriptApi()
-
+    
+    # Try the simplified method first (as requested by user)
     try:
-        # List all available transcripts for this video
-        transcript_list = api.list(video_id)
+        transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=["en"])
+        transcript = " ".join(chunk["text"] for chunk in transcript_list)
+        print(f"🎬 Successfully extracted transcript with {len(transcript_list)} chunks")
+        return transcript
+    except Exception as e:
+        print(f"⚠️ Simplified fetch failed, trying robust fallback: {e}")
 
+    api = YouTubeTranscriptApi()
+    try:
+        transcript_list = api.list(video_id)
         segments: List[dict] | None = None
 
-        # 1) Try preferred languages first (any type of transcript)
         for lang in preferred_languages:
             try:
                 transcript = transcript_list.find_transcript([lang])
@@ -38,7 +44,6 @@ def get_youtube_transcript(video_id: str, preferred_languages: List[str] | None 
             except Exception:
                 continue
 
-        # 2) Fallback: first available transcript, translated to English if possible
         if not segments:
             try:
                 first = next(iter(transcript_list))
@@ -48,27 +53,51 @@ def get_youtube_transcript(video_id: str, preferred_languages: List[str] | None 
             except Exception:
                 return ""
 
+        parts = [getattr(item, "text", "").replace("\n", " ").strip() for item in segments]
+        return " ".join(p for p in parts if p)
+
     except Exception as e:
-        # Log error but don't crash
         print(f"Error fetching transcript: {e}")
         return ""
 
-    # Process transcript segments into text
-    # In youtube-transcript-api 1.2.4, each item is a FetchedTranscriptSnippet
-    # with a .text attribute (not a dict).
-    parts = [getattr(item, "text", "").replace("\n", " ").strip() for item in segments]
-    parts = [p for p in parts if p]
-    return " ".join(parts)
+
+def create_vector_store(transcript: str, video_id: str) -> FAISS:
+    """Create FAISS vector store from transcript with caching"""
+    if video_id in _vector_store_cache:
+        print("💾 Using cached vector store")
+        return _vector_store_cache[video_id]
+
+    print(f"🧠 Creating vector store for video: {video_id}")
+    
+    # Split text into chunks
+    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+    chunks = splitter.split_text(transcript)
+    docs = [Document(page_content=chunk) for chunk in chunks]
+    print(f"📝 Created {len(docs)} text chunks")
+    
+    # Create embeddings using Hugging Face model
+    embeddings = HuggingFaceEmbeddings(
+        model_name="BAAI/bge-small-en-v1.5",
+        model_kwargs={"device": "cpu"}
+    )
+    
+    # Create vector store
+    vector_store = FAISS.from_documents(docs, embeddings)
+    
+    # Cache it
+    _vector_store_cache[video_id] = vector_store
+    print("✅ Vector store created successfully")
+    
+    return vector_store
 
 
 def _build_prompt(context: str, question: str) -> str:
-    """Build prompt for Gemini API"""
+    """Build prompt for Groq API with retrieved context"""
     return (
-        "You are an assistant that answers questions about a YouTube video transcript.\n"
-        "Use ONLY the information from the provided transcript context. If the context "
-        "does not contain enough information to answer accurately, reply exactly with "
-        "\"I don't have enough information to answer this question.\"\n\n"
-        f"Transcript context:\n{context}\n\n"
+        "You are a specialized assistant that answers questions based on a YouTube video transcript.\n"
+        "Use ONLY the following context to answer the question. If the answer isn't in the context, "
+        "say exactly \"I don't have enough information to answer this question.\"\n\n"
+        f"Context:\n{context}\n\n"
         f"Question: {question}\n\n"
         "Answer:"
     )
@@ -147,21 +176,14 @@ def _call_groq(prompt: str, max_retries: int = 3) -> str:
 
 def run_rag_pipeline(video_id: str, question: str) -> str:
     """
-    Simple RAG pipeline:
-    1. Download transcript
-    2. Send to Gemini with question
-    3. Uses caching to avoid re-processing same questions
+    RAG pipeline:
+    1. Fetch transcript
+    2. Create FAISS vector store
+    3. Retrieve relevant context
+    4. Call Groq with context
     """
-    if not video_id:
-        raise ValueError("video_id is required")
-    if not question:
-        raise ValueError("question is required")
-
-    # Check cache first
-    cache_key = f"{video_id}:{question.strip().lower()}"
-    if cache_key in _cache:
-        print("💾 Using cached answer")
-        return _cache[cache_key]
+    if not video_id or not question:
+        raise ValueError("video_id and question are required")
 
     print(f"\n{'='*60}")
     print(f"🎬 Processing video: {video_id}")
@@ -171,25 +193,21 @@ def run_rag_pipeline(video_id: str, question: str) -> str:
     transcript = get_youtube_transcript(video_id)
     
     if not transcript:
-        return "❌ I couldn't retrieve a transcript for this video. Please ensure the video has captions enabled."
+        return "❌ I couldn't retrieve a transcript for this video. YouTube may be blocking automated requests. Please try the 'Provide transcript manually' option."
 
-    # Truncate transcript if too long (Groq/Gemini have token limits)
-    # Reducing to 15,000 to avoid 413 Client Error: Payload Too Large
-    max_chars = 15000  # ~4000 tokens
-    if len(transcript) > max_chars:
-        print(f"⚠️ Transcript too long ({len(transcript)} chars), truncating to {max_chars}")
-        # Try to find the last full sentence/space before truncation
-        last_space = transcript.rfind(' ', 0, max_chars)
-        if last_space != -1:
-            transcript = transcript[:last_space] + "..."
-        else:
-            transcript = transcript[:max_chars] + "..."
+    # Create/retrieved vector store
+    try:
+        vector_store = create_vector_store(transcript, video_id)
+        retriever = vector_store.as_retriever(search_kwargs={"k": 4})
+        
+        # Retrieve context
+        retrieved_docs = retriever.get_relevant_documents(question)
+        context = "\n\n".join(doc.page_content for doc in retrieved_docs)
+    except Exception as e:
+        print(f"❌ Error in RAG retrieval: {e}")
+        return f"Error while processing context: {e}"
 
-    prompt = _build_prompt(transcript, question)
-
-    # Add a small delay to avoid hitting rate limits too quickly
-    # This helps space out requests
-    time.sleep(0.5)
+    prompt = _build_prompt(context, question)
 
     try:
         answer = _call_groq(prompt)
@@ -197,18 +215,7 @@ def run_rag_pipeline(video_id: str, question: str) -> str:
         print(f"❌ Groq API error: {exc}")
         return f"Error while calling Groq: {exc}"
 
-    if not answer:
-        return "I couldn't generate an answer."
-
-    answer = answer.strip()
-    
-    # Cache the answer (limit cache size to avoid memory issues)
-    if len(_cache) > 100:
-        # Remove oldest entry (simple FIFO)
-        _cache.pop(next(iter(_cache)))
-    _cache[cache_key] = answer
-    
-    return answer
+    return answer.strip() if answer else "I couldn't generate an answer."
 
 
 def summarize_video(video_id: str) -> str:
@@ -217,12 +224,6 @@ def summarize_video(video_id: str) -> str:
     """
     if not video_id:
         raise ValueError("video_id is required")
-
-    # Check cache first (using a specific summary key)
-    cache_key = f"{video_id}:summary"
-    if cache_key in _cache:
-        print("💾 Using cached summary")
-        return _cache[cache_key]
 
     print(f"\n{'='*60}")
     print(f"🎬 Summarizing video: {video_id}")
@@ -233,15 +234,15 @@ def summarize_video(video_id: str) -> str:
     if not transcript:
         return "❌ I couldn't retrieve a transcript for this video. Summarization unavailable."
 
-    # Truncate to avoid payload limits
+    # For summary, we use a truncated version of the full transcript if it's too long
     max_chars = 15000
     if len(transcript) > max_chars:
         last_space = transcript.rfind(' ', 0, max_chars)
-        transcript = transcript[:last_space] + "..." if last_space != -1 else transcript[:max_chars] + "..."
+        truncated_transcript = transcript[:last_space] + "..." if last_space != -1 else transcript[:max_chars] + "..."
+    else:
+        truncated_transcript = transcript
 
-    prompt = _build_summary_prompt(transcript)
-
-    time.sleep(0.5)
+    prompt = _build_summary_prompt(truncated_transcript)
 
     try:
         summary = _call_groq(prompt)
@@ -249,17 +250,7 @@ def summarize_video(video_id: str) -> str:
         print(f"❌ Groq API error during summary: {exc}")
         return f"Error while calling Groq: {exc}"
 
-    if not summary:
-        return "I couldn't generate a summary."
-
-    summary = summary.strip()
-    
-    # Cache the summary
-    if len(_cache) > 100:
-        _cache.pop(next(iter(_cache)))
-    _cache[cache_key] = summary
-    
-    return summary
+    return summary.strip() if summary else "I couldn't generate a summary."
 
 
 def get_video_info(video_id: str) -> dict:
