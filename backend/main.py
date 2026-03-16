@@ -18,23 +18,15 @@ _vector_store_cache: dict[str, FAISS] = {}
 def get_youtube_transcript(video_id: str, preferred_languages: List[str] | None = None) -> str:
     """
     Fetch transcript for a YouTube video. 
-    Uses a robust method with fallbacks.
+    Uses the instance-based list() and fetch() methods (v1.2.4).
     """
     preferred_languages = preferred_languages or ["en", "hi", "hi-IN"]
     
-    # Try the simplified method first (as requested by user)
-    try:
-        transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=["en"])
-        transcript = " ".join(chunk["text"] for chunk in transcript_list)
-        print(f"🎬 Successfully extracted transcript with {len(transcript_list)} chunks")
-        return transcript
-    except Exception as e:
-        print(f"⚠️ Simplified fetch failed, trying robust fallback: {e}")
-
     api = YouTubeTranscriptApi()
     try:
+        # List all available transcripts
         transcript_list = api.list(video_id)
-        segments: List[dict] | None = None
+        segments = None
 
         for lang in preferred_languages:
             try:

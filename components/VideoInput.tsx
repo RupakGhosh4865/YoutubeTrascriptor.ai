@@ -39,10 +39,15 @@ export function VideoInput({ onSubmit, isLoading, error, onToast }: VideoInputPr
     if (!file) return
 
     const reader = new FileReader()
-    if (reader.result) {
-      const content = reader.result as string
-      setManualTranscript(content)
-      onToast?.('Transcript file loaded! 📄', 'success')
+    reader.onload = (event) => {
+      const content = event.target?.result as string
+      if (content) {
+        setManualTranscript(content)
+        onToast?.('Transcript file loaded! 📄', 'success')
+      }
+    }
+    reader.onerror = () => {
+      onToast?.('Failed to read transcript file.', 'error')
     }
     reader.readAsText(file)
   }
